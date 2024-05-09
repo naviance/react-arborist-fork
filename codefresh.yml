@@ -1,0 +1,166 @@
+version: '1.0'
+build_version: 'v2'
+mode: parallel
+stages:
+  - clone
+  - build
+  - test
+  - publish
+steps:
+  ## Clone
+  main_clone:
+    title: Cloning main repository...
+    stage: clone
+    type: git-clone
+    repo: "${{CF_REPO_OWNER}}/${{CF_REPO_NAME}}"
+    revision: "${{CF_REVISION}}"
+
+  generate_npmrc:
+    stage: clone
+    type: hobsons/generate-npmrc
+    when:
+      steps:
+        - name: main_clone
+          on:
+            - success
+  ## Build
+  build_test_image: &build
+    title: Building Test Image
+    stage: build
+    type: build
+    image_name: naviance/react-arborist
+    registry: hobsons-cfcr
+    disable_push: true
+    working_directory: ./
+    tag: "${{CF_BRANCH_TAG_NORMALIZED}}-${{CF_SHORT_REVISION}}-TEST"
+    target: test-env
+    dockerfile: Dockerfile
+    when:
+      steps:
+        - name: generate_npmrc
+          on:
+            - success
+
+  build_publish_image:
+    <<: *build
+    title: Building JFrog Publish Image
+    target: publish-env
+    registry: hobsons-cfcr
+    disable_push: true
+    tag: "${{CF_BRANCH_TAG_NORMALIZED}}-${{CF_SHORT_REVISION}}"
+    when:
+      steps:
+        - name: build_test_image
+          on:
+            - success
+        - name: test
+          on:
+            - success
+
+  # Test
+  test:
+    stage: test
+    title: Tests
+    image: ${{build_test_image}}
+    fail_fast: true
+    working_directory: /app
+    commands:
+      - yarn test
+    when:
+      steps:
+        - name: build_test_image
+          on:
+            - success
+
+  # Publish
+  retag_publish_image:
+    stage: publish
+    type: push
+    description: add commit tag for use with releases
+    candidate: ${{build_publish_image}}
+    tag: "${{CF_REVISION}}-${{CF_SHORT_REVISION}}"
+    image_name: naviance/react-arborist
+    when:
+      steps:
+        - name: build_publish_image
+          on:
+            - success
+
+  jfrog_version_test:
+    title: "Check Published Versions"
+    image: ${{build_publish_image}}
+    working_directory: /app
+    environment:
+      - ARTIFACTORY_USERNAME=${{ARTIFACTORY_RELEASE_PROMOTER_USERNAME}}
+      - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_RELEASE_PROMOTER_PASSWORD}}
+      - NPM_REGISTRY_NAME=${{NAVIANCE_NPM_VIRTUAL_REPO}}
+    commands:
+      - npm run test-version
+    when:
+      branch:
+        only:
+          - main
+      steps:
+        - name: retag_publish_image
+          on:
+            - success
+
+  jfrog_publish:
+    title: "Publish Artifact to Dev Repo"
+    image: ${{build_publish_image}}
+    working_directory: /app
+    environment:
+      - ARTIFACTORY_USERNAME=${{ARTIFACTORY_DEV_PROMOTER_USERNAME}}
+      - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_DEV_PROMOTER_PASSWORD}}
+      - ARTIFACTORY_DESTINATION_REPO=${{NAVIANCE_NPM_DEV_REPO}}
+    commands:
+      - npm run publish
+    when:
+      steps:
+        - name: jfrog_version_test
+          on:
+            - success
+
+  jfrog_integration_test:
+    stage: publish
+    title: 'Test Installation from Dev Repo'
+    image: ${{build_publish_image}}
+    working_directory: /app
+    environment:
+      - ARTIFACTORY_USERNAME=${{ARTIFACTORY_DEV_DEPLOYER_USERNAME}}
+      - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_DEV_DEPLOYER_PASSWORD}}
+      - NPM_REGISTRY_NAME=${{NAVIANCE_NPM_DEV_REPO}}
+    commands:
+      - npm run test-install
+    when:
+      steps:
+        - name: jfrog_publish
+          on:
+            - success
+  jfrog_promotion:
+    title: "Promote to Release Repo"
+    image: ${{build_publish_image}}
+    working_directory: /app
+    environment:
+      - ARTIFACTORY_USERNAME=${{ARTIFACTORY_RELEASE_LIB_PROMOTER_USERNAME}}
+      - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_RELEASE_LIB_PROMOTER_PASSWORD}}
+      - ARTIFACTORY_DESTINATION_REPO=${{NAVIANCE_NPM_RELEASE_REPO}}
+    commands:
+      - npm run promote
+    when:
+      steps:
+        - name: jfrog_publish
+          on:
+            - success
+
+  do_not_publish:
+    stage: publish
+    title: 'Success without publish'
+    image: alpine
+    commands:
+      - echo "Pipeline succeeded but version has already been published and won't be re-published."
+    when:
+      steps:
+        - name: jfrog_version_test
+          on:
+            - failure
