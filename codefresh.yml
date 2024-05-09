@@ -87,6 +87,7 @@ steps:
             - success
 
   jfrog_version_test:
+    stage: publish
     title: "Check Published Versions"
     image: ${{build_publish_image}}
     working_directory: /app
@@ -106,6 +107,7 @@ steps:
             - success
 
   jfrog_publish:
+    stage: publish
     title: "Publish Artifact to Dev Repo"
     image: ${{build_publish_image}}
     working_directory: /app
@@ -138,6 +140,7 @@ steps:
           on:
             - success
   jfrog_promotion:
+    stage: publish
     title: "Promote to Release Repo"
     image: ${{build_publish_image}}
     working_directory: /app
