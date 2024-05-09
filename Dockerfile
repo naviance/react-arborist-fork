@@ -1,5 +1,5 @@
-FROM node:20.5-alpine as test-env
-RUN apk add --no-cache bash
+FROM cypress/base:20.5.0 as test-env
+
 # Upgrade Yarn
 ENV YARN_VERSION 4.0.2
 
