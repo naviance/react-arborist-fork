@@ -90,7 +90,7 @@ steps:
     stage: publish
     title: "Check Published Versions"
     image: ${{build_publish_image}}
-    working_directory: /app
+    working_directory: /plugin
     environment:
       - ARTIFACTORY_USERNAME=${{ARTIFACTORY_RELEASE_PROMOTER_USERNAME}}
       - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_RELEASE_PROMOTER_PASSWORD}}
@@ -110,7 +110,7 @@ steps:
     stage: publish
     title: "Publish Artifact to Dev Repo"
     image: ${{build_publish_image}}
-    working_directory: /app
+    working_directory: /plugin
     environment:
       - ARTIFACTORY_USERNAME=${{ARTIFACTORY_DEV_PROMOTER_USERNAME}}
       - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_DEV_PROMOTER_PASSWORD}}
@@ -127,7 +127,7 @@ steps:
     stage: publish
     title: 'Test Installation from Dev Repo'
     image: ${{build_publish_image}}
-    working_directory: /app
+    working_directory: /plugin
     environment:
       - ARTIFACTORY_USERNAME=${{ARTIFACTORY_DEV_DEPLOYER_USERNAME}}
       - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_DEV_DEPLOYER_PASSWORD}}
@@ -143,7 +143,7 @@ steps:
     stage: publish
     title: "Promote to Release Repo"
     image: ${{build_publish_image}}
-    working_directory: /app
+    working_directory: /plugin
     environment:
       - ARTIFACTORY_USERNAME=${{ARTIFACTORY_RELEASE_LIB_PROMOTER_USERNAME}}
       - ARTIFACTORY_PASSWORD=${{ARTIFACTORY_RELEASE_LIB_PROMOTER_PASSWORD}}
@@ -152,7 +152,7 @@ steps:
       - npm run promote
     when:
       steps:
-        - name: jfrog_publish
+        - name: jfrog_integration_test
           on:
             - success
 
